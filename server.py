@@ -11,7 +11,7 @@ import json
 import socket
 
 from domain.app import App
-from infrastucture.in_memory_app_repository import InMemoryAppRepository as AppRepository
+from infrastucture.rest_repository import RestRepository as AppRepository
 
 from domain.robot_status import RobotStatus, Status
 from domain.message import SuccessMessage, ErrorMessage
@@ -125,9 +125,9 @@ def get_json_string(app_dict):
         temp_list.append((app.__dict__))
     return temp_list
 
-def reset_connected():
+def reset_connected(websocket):
     global connected
-    connected = []
+    connected.remove(websocket)
 
 async def get_apps(websocket):
     await websocket.send(json.dumps({"apps": get_json_string(appRepository.getInventoryAsDto())}))
@@ -176,9 +176,9 @@ async def handler(websocket):
                 await send_response("error", ErrorMessage.UNKNOWN_ERROR.name)
 
     except websockets.exceptions.ConnectionClosed as e:
-        reset_connected()
+        reset_connected(websocket)
     except websockets.exceptions.ConnectionClosedError as e:
-        reset_connected()
+        reset_connected(websocket)
 
 
 
