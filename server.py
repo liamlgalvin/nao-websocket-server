@@ -15,6 +15,7 @@ from infrastucture.rest_repository import RestRepository as AppRepository
 
 from domain.robot_status import RobotStatus, Status
 from domain.message import SuccessMessage, ErrorMessage
+from application.websocket_helper import reset_connected, send_response, get_apps
 
 # run app variables
 
@@ -29,34 +30,35 @@ appRepository = AppRepository()
 
 # run app methods
 
-### use exceptions to send websockets to minimise number of places i am sending??
-
 async def run_app(app: App):
 
-    global process, current_app, task
+    global process, current_app, task, connected
 
     if not exists(app.location):
         # reset_global_variables()
-        await send_response("error", ErrorMessage.APP_DOESNT_EXIST.name)
+        await send_response("error", ErrorMessage.APP_DOESNT_EXIST.name, connected,  current_app, get_robot_status().get_status().name)
         return
 
-    if get_robot_status().getStatus() == Status.APP_RUNNING:
-        await send_response("error", ErrorMessage.APP_ALREADY_RUNNNG.name)
+    if get_robot_status().get_status() == Status.APP_RUNNING:
+        await send_response("error", ErrorMessage.APP_ALREADY_RUNNNG.name, connected,  current_app, get_robot_status().get_status().name)
         return
 
     current_app = app
     
     process = await asyncio.create_subprocess_shell(app.getShellCommand(), preexec_fn=os.setsid)
+    
+    # await send_response2("success", "hello", connected,  current_app, get_robot_status().get_status().name)
 
-    await send_response("start", SuccessMessage.APP_STARTED.name)
+
+    await send_response("start", SuccessMessage.APP_STARTED.name, connected,  current_app, get_robot_status().get_status().name)
 
     if(await process.communicate() == (None,None)):
 
-        await send_response("sucess", SuccessMessage.APP_FINISHED.name)
+        await send_response("sucess", SuccessMessage.APP_FINISHED.name, connected,  current_app, get_robot_status().get_status().name)
         
     else:
 
-        await send_response("error", ErrorMessage.PROBLEM_RUNNING_APP.name)
+        await send_response("error", ErrorMessage.PROBLEM_RUNNING_APP.name, connected,  current_app, get_robot_status().get_status().name)
     
     reset_global_variables()
     return
@@ -68,11 +70,11 @@ async def cancel_app(app):
 
     print("cancel called")
 
-    if get_robot_status().getStatus() == Status.NO_APP_RUNNING:
-        await send_response("error", ErrorMessage.NO_APP_RUNNING.name)
+    if get_robot_status().get_status() == Status.NO_APP_RUNNING:
+        await send_response("error", ErrorMessage.NO_APP_RUNNING.name, connected,  current_app, get_robot_status().get_status().name)
         return
 
-    if get_robot_status().getStatus() == Status.APP_RUNNING: 
+    if get_robot_status().get_status() == Status.APP_RUNNING: 
 
         try:
             process.terminate()
@@ -81,12 +83,12 @@ async def cancel_app(app):
             os.killpg(os.getpgid(process.pid), signal.SIGTERM)
 
         except Exception as e:
-            await send_response("error", ErrorMessage.COULD_NOT_CANCEL_APP.name)
+            await send_response("error", ErrorMessage.COULD_NOT_CANCEL_APP.name, connected,  current_app, get_robot_status().get_status().name)
             return
         
         reset_global_variables()
 
-        await send_response("cancel", SuccessMessage.APP_CANCELLED.name)
+        await send_response("cancel", SuccessMessage.APP_CANCELLED.name, connected,  current_app, get_robot_status().get_status().name)
         return
     
 def get_robot_status() -> RobotStatus:
@@ -95,22 +97,8 @@ def get_robot_status() -> RobotStatus:
     return(RobotStatus(Status.NO_APP_RUNNING, current_app))
 
 
-async def send_response(type: str, msg: str):
-    global connected
-
-    app = str(current_app.id) if current_app != None else ""
-
-    for connection in connected: ## maybe I should remove this...
-        await connection.send(json.dumps({
-            "type": type, 
-            "robotStatus": get_robot_status().getStatus().name, 
-            "currentAppId" : app,
-            "message": msg}))
-
 def reset_global_variables():
-    global process
-    global current_app
-    global task
+    global process, current_app, task
 
     task = None
     process = None
@@ -119,25 +107,12 @@ def reset_global_variables():
 # end run app methods
 
 
-def get_json_string(app_dict):
-    temp_list = []
-    for app in app_dict:
-        temp_list.append((app.__dict__))
-    return temp_list
-
-def reset_connected(websocket):
-    global connected
-    connected.remove(websocket)
-
-async def get_apps(websocket):
-    await websocket.send(json.dumps({"apps": get_json_string(appRepository.getInventoryAsDto())}))
-
-
 async def handler(websocket):
 
-    global task
+    global task, connected, current_app, robot_status
 
     print("A client just connected")
+
     connected.append(websocket)
 
     print(connected)
@@ -156,24 +131,23 @@ async def handler(websocket):
 
                 print(id)
                 
-
                 app = appRepository.getAppById(id)
 
                 if app != None:
                     task = asyncio.create_task( run_app(app) )
                 else:
-                    await send_response("error", ErrorMessage.APP_DOESNT_EXIST.name)
+                    await send_response("error", ErrorMessage.APP_DOESNT_EXIST.name, connected,  current_app, get_robot_status().get_status().name)
 
             elif event["type"] == "get_apps": 
 
-                await get_apps(websocket)
+                await get_apps(websocket, appRepository)
 
             elif event["type"] == "destroy_connection":
 
                 connected.remove(websocket)
 
             else: 
-                await send_response("error", ErrorMessage.UNKNOWN_ERROR.name)
+                await send_response("error", ErrorMessage.UNKNOWN_ERROR.name, connected,  current_app, get_robot_status().get_status().name)
 
     except websockets.exceptions.ConnectionClosed as e:
         reset_connected(websocket)
