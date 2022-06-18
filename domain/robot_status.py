@@ -12,13 +12,13 @@ class RobotStatus:
         self.status = status,
         self.app = app
 
-    def getDescription(self):
+    def get_description(self):
         if self.status == Status.APP_RUNNNING:
             return "{} running".format(self.app.name)
         
         return "no app running".format()
     
-    def getStatus(self):
+    def get_status(self):
         return self.status[0]
         
 
