@@ -44,10 +44,8 @@ async def run_app(app: App):
         return
 
     current_app = app
-    
+
     process = await asyncio.create_subprocess_shell(app.getShellCommand(), preexec_fn=os.setsid)
-    
-    # await send_response2("success", "hello", connected,  current_app, get_robot_status().get_status().name)
 
 
     await send_response("start", SuccessMessage.APP_STARTED.name, connected,  current_app, get_robot_status().get_status().name)
